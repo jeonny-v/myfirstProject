@@ -1,4 +1,29 @@
-# vinext-starter
+# 안심 로그인 — Docker 3계층 구현
+
+이 저장소는 로그인 UI 목업을 다음 서비스로 분리한 실행 가능한 개발·검증 환경입니다.
+
+- `gateway`: 외부 단일 포트, `/`와 `/api/*` reverse proxy
+- `frontend`: vinext/React UI
+- `backend`: Node.js Auth API
+- `db`: PostgreSQL 17
+
+## Docker로 실행
+
+```powershell
+Copy-Item .env.example .env
+docker compose config
+docker compose up -d --build
+docker compose ps
+Invoke-RestMethod http://127.0.0.1:8080/api/health/ready
+```
+
+`.env`의 placeholder 비밀번호를 서로 다른 긴 값으로 변경하세요. 테스트 회원은 `demo01@example.test`부터 `demo10@example.test`까지이며 공통 비밀번호는 `DEMO_USER_PASSWORD` 값입니다. 이메일과 이름은 모두 가상 데이터입니다.
+
+상세 배포·self-hosted runner 절차는 [`docs/deployment.md`](docs/deployment.md)에 있습니다.
+
+> 현재 구현은 개발·검증용입니다. 실제 메일 OTP/OIDC, managed DB HA·PITR, 운영 TLS/WAF, 부하·복원 시험 전에는 실제 회원정보를 받지 마세요.
+
+## 기존 vinext 개발 명령
 
 A clean full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and

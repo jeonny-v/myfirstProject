@@ -9,8 +9,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const origin = `${protocol}://${host}`;
 
   return {
-    title: "안심 로그인 · HTML 화면 목업",
-    description: "로그인, 회원가입, 이메일 OTP, 계정 복구와 보안 활동을 체험하는 인터랙티브 UI 목업",
+    title: "안심 로그인 · 개발 환경",
+    description: "Frontend, Backend와 PostgreSQL을 분리한 로그인 시스템 개발·검증 환경",
     icons: {
       icon: "/favicon.svg",
       shortcut: "/favicon.svg",
@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
       description: "안전함은 복잡하지 않아야 하니까",
       type: "website",
       url: origin,
-      images: [{ url: `${origin}/og.png`, width: 1672, height: 941, alt: "안심 로그인 HTML UI 목업" }],
+      images: [{ url: `${origin}/og.png`, width: 1672, height: 941, alt: "안심 로그인 개발 환경" }],
     },
     twitter: {
       card: "summary_large_image",

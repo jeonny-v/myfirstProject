@@ -1,0 +1,105 @@
+name: login-system
+
+services:
+  gateway:
+    image: login-system-gateway:${IMAGE_TAG:-local}
+    build:
+      context: ./infra/nginx
+    restart: unless-stopped
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8080}:8080"
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - edge
+      - app
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+
+  frontend:
+    image: login-system-frontend:${IMAGE_TAG:-local}
+    build:
+      context: .
+    restart: unless-stopped
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks:
+      - app
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  backend:
+    image: login-system-backend:${IMAGE_TAG:-local}
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DATABASE_URL: "postgresql://login_app:${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}@db:5432/${POSTGRES_DB:-login_system}"
+      DB_POOL_MAX: "10"
+      DB_SSL: "false"
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-http://localhost:8080}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      SESSION_TTL_SECONDS: "${SESSION_TTL_SECONDS:-28800}"
+      SEED_DEMO_USERS: "${SEED_DEMO_USERS:-true}"
+      DEMO_USER_PASSWORD: "${DEMO_USER_PASSWORD:?DEMO_USER_PASSWORD is required}"
+    expose:
+      - "8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/api/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+    networks:
+      - app
+      - data
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-login_system}"
+      POSTGRES_USER: "${POSTGRES_ADMIN_USER:-login_admin}"
+      POSTGRES_PASSWORD: "${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD is required}"
+      APP_DB_PASSWORD: "${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/001_create_app_role.sh:/docker-entrypoint-initdb.d/001_create_app_role.sh:ro
+      - ./infra/postgres/001_init.sql:/docker-entrypoint-initdb.d/002_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - data
+    shm_size: 256mb
+
+networks:
+  edge:
+  app:
+    internal: true
+  data:
+    internal: true
+
+volumes:
+  postgres_data:

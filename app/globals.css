@@ -38,6 +38,7 @@ body {
 
 button, input { font: inherit; }
 button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .58; }
 button:focus-visible, input:focus-visible { outline: 3px solid rgba(49, 94, 251, .24); outline-offset: 2px; }
 
 .site-shell { min-height: 100vh; display: flex; flex-direction: column; }
@@ -91,6 +92,8 @@ input[type="checkbox"] { width: 17px; height: 17px; margin: 1px 0 0; accent-colo
 .text-button:hover { text-decoration: underline; }
 .centered { display: block; margin: 22px auto 0; }
 .form-error { margin: 0 0 12px; padding: 10px 12px; background: var(--danger-soft); border-radius: 8px; color: #b83b3b; font-size: 12px; font-weight: 700; }
+.demo-login-note { display: grid; gap: 3px; margin-top: 14px; padding: 12px 14px; border: 1px solid #dce5df; border-radius: 12px; background: #f6faf7; color: #52605a; font-size: 12px; line-height: 1.45; }
+.demo-login-note strong { color: #143f31; }
 
 .primary-button, .secondary-button, .danger-button, .outline-danger { width: 100%; min-height: 49px; border-radius: 11px; font-weight: 800; transition: .18s ease; }
 .primary-button { border: 0; background: linear-gradient(135deg, var(--blue), #2453e8); color: white; box-shadow: 0 10px 24px rgba(49,94,251,.22); }

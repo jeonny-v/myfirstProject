@@ -16,20 +16,21 @@ async function render() {
   );
 }
 
-test("server-renders the login mockup", async () => {
+test("server-renders the login development environment", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<html lang="ko">/);
-  assert.match(html, /<title>안심 로그인 · HTML 화면 목업<\/title>/);
+  assert.match(html, /<title>안심 로그인 · 개발 환경<\/title>/);
   assert.match(html, /다시 오신 것을/);
   assert.match(html, /회원가입/);
   assert.match(html, /이메일 OTP/);
   assert.match(html, /계정 복구/);
   assert.match(html, /보안 활동/);
-  assert.match(html, /실제 정보를 저장하거나 전송하지 않아요/);
+  assert.match(html, /입력 정보는 테스트 DB에 저장되므로 가상 정보만 사용하세요/);
+  assert.match(html, /demo01@example\.test ~ demo10@example\.test/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -44,7 +45,7 @@ test("removes starter-only assets and keeps product metadata", async () => {
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
   assert.doesNotMatch(page, /_sites-preview|SkeletonPreview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
-  assert.match(layout, /안심 로그인 · HTML 화면 목업/);
+  assert.match(layout, /안심 로그인 · 개발 환경/);
   assert.match(layout, /og\.png/);
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /@media \(max-width: 680px\)/);

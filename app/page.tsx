@@ -4,7 +4,7 @@ import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 
 type Screen = "login" | "signup" | "otp" | "recovery" | "security";
 type SessionItem = {
-  id: number;
+  id: string;
   device: string;
   detail: string;
   location: string;
@@ -21,38 +21,18 @@ const screenLabels: { id: Screen; label: string }[] = [
   { id: "security", label: "보안 활동" },
 ];
 
-const initialSessions: SessionItem[] = [
-  {
-    id: 1,
-    device: "내 기기 (현재)",
-    detail: "Chrome · Windows",
-    location: "대한민국 · 서울",
-    time: "현재 사용 중",
-    current: true,
-  },
-  {
-    id: 2,
-    device: "iPhone 14 Pro",
-    detail: "Safari · iOS",
-    location: "대한민국 · 서울",
-    time: "3시간 전",
-  },
-  {
-    id: 3,
-    device: "MacBook Air",
-    detail: "Safari · macOS",
-    location: "대한민국 · 부산",
-    time: "1일 전",
-  },
-  {
-    id: 4,
-    device: "알 수 없는 기기",
-    detail: "Chrome · Windows",
-    location: "미국 · 뉴욕",
-    time: "2일 전",
-    suspicious: true,
-  },
-];
+const initialSessions: SessionItem[] = [];
+
+async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(path, {
+    credentials: "include",
+    ...options,
+    headers: { "content-type": "application/json", ...options.headers },
+  });
+  if (response.ok) return response.status === 204 ? (undefined as T) : response.json();
+  const body = await response.json().catch(() => ({ message: "요청을 처리하지 못했습니다." }));
+  throw new Error(body.message || "요청을 처리하지 못했습니다.");
+}
 
 function TrustPanel() {
   return (
@@ -78,7 +58,7 @@ function TrustPanel() {
       </div>
       <div className="privacy-note">
         <span>✓</span>
-        <div><strong>개인정보는 안전하게 보호됩니다.</strong><p>이 목업은 실제 정보를 저장하거나 전송하지 않아요.</p></div>
+        <div><strong>개발·검증 전용 환경입니다.</strong><p>입력 정보는 테스트 DB에 저장되므로 가상 정보만 사용하세요.</p></div>
       </div>
     </aside>
   );
@@ -86,10 +66,10 @@ function TrustPanel() {
 
 function Brand() {
   return (
-    <div className="brand" aria-label="안심 로그인 목업">
+    <div className="brand" aria-label="안심 로그인 개발 환경">
       <span className="brand-mark">✓</span>
       <span>안심 로그인</span>
-      <span className="demo-pill">HTML MOCK</span>
+      <span className="demo-pill">DEVELOPMENT</span>
     </div>
   );
 }
@@ -105,6 +85,8 @@ export default function Home() {
   const [sessions, setSessions] = useState(initialSessions);
   const [confirmAll, setConfirmAll] = useState(false);
   const [toast, setToast] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [signedInName, setSignedInName] = useState("");
   const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
@@ -119,15 +101,35 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  const loadSessions = async () => {
+    try {
+      const data = await apiRequest<{ sessions: SessionItem[] }>("/api/v1/auth/sessions");
+      setSessions(data.sessions.map((item) => ({ ...item, time: new Date(item.time).toLocaleString("ko-KR") })));
+    } catch {
+      setSessions([]);
+    }
+  };
+
+  useEffect(() => {
+    apiRequest<{ user: { displayName: string } }>("/api/v1/auth/me")
+      .then((data) => {
+        setSignedInName(data.user.displayName);
+        setScreen("security");
+        return loadSessions();
+      })
+      .catch(() => undefined);
+  }, []);
+
   const navigate = (next: Screen) => {
     setScreen(next);
     setLoginError("");
     setSignupError("");
     if (next !== "recovery") setRecoverySent(false);
+    if (next === "security") void loadSessions();
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const submitLogin = (event: FormEvent<HTMLFormElement>) => {
+  const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     if (!data.get("email") || !data.get("password")) {
@@ -135,13 +137,24 @@ export default function Home() {
       return;
     }
     setLoginError("");
-    setOtp(["", "", "", "", "", ""]);
-    setCountdown(45);
-    navigate("otp");
-    window.setTimeout(() => otpRefs.current[0]?.focus(), 120);
+    setSubmitting(true);
+    try {
+      const result = await apiRequest<{ user: { displayName: string } }>("/api/v1/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email: data.get("email"), password: data.get("password") }),
+      });
+      setSignedInName(result.user.displayName);
+      await loadSessions();
+      setScreen("security");
+      setToast("안전하게 로그인되었습니다.");
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "로그인에 실패했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const submitSignup = (event: FormEvent<HTMLFormElement>) => {
+  const submitSignup = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     if (!data.get("email") || !data.get("password") || !data.get("passwordConfirm")) {
@@ -157,9 +170,19 @@ export default function Home() {
       return;
     }
     setSignupError("");
-    setOtp(["", "", "", "", "", ""]);
-    setCountdown(45);
-    navigate("otp");
+    setSubmitting(true);
+    try {
+      await apiRequest("/api/v1/auth/sign-up", {
+        method: "POST",
+        body: JSON.stringify({ email: data.get("email"), password: data.get("password") }),
+      });
+      setToast("계정이 생성되었습니다. 로그인해 주세요.");
+      navigate("login");
+    } catch (error) {
+      setSignupError(error instanceof Error ? error.message : "계정을 만들지 못했습니다.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const updateOtp = (index: number, value: string) => {
@@ -190,23 +213,43 @@ export default function Home() {
     otpRefs.current[0]?.focus();
   };
 
-  const removeSession = (id: number) => {
+  const removeSession = async (id: string) => {
     const target = sessions.find((item) => item.id === id);
-    setSessions((current) => current.filter((item) => item.id !== id));
-    setToast(`${target?.device ?? "기기"}에서 로그아웃했습니다.`);
+    try {
+      await apiRequest(`/api/v1/auth/sessions/${id}`, { method: "DELETE" });
+      setSessions((current) => current.filter((item) => item.id !== id));
+      setToast(`${target?.device ?? "기기"}에서 로그아웃했습니다.`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "세션을 종료하지 못했습니다.");
+    }
   };
 
-  const logoutAll = () => {
-    setSessions((current) => current.filter((item) => item.current));
-    setConfirmAll(false);
-    setToast("현재 기기를 제외한 모든 세션을 종료했습니다.");
+  const logoutAll = async () => {
+    try {
+      await apiRequest("/api/v1/auth/logout-others", { method: "POST" });
+      setSessions((current) => current.filter((item) => item.current));
+      setConfirmAll(false);
+      setToast("현재 기기를 제외한 모든 세션을 종료했습니다.");
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "세션을 종료하지 못했습니다.");
+    }
+  };
+
+  const submitRecovery = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    await apiRequest("/api/v1/auth/password-recovery", {
+      method: "POST",
+      body: JSON.stringify({ email: data.get("email") }),
+    }).catch(() => undefined);
+    setRecoverySent(true);
   };
 
   return (
     <main className="site-shell">
       <header className="topbar">
         <Brand />
-        <nav className="screen-nav" aria-label="목업 화면 선택">
+        <nav className="screen-nav" aria-label="로그인 기능 화면 선택">
           {screenLabels.map((item) => (
             <button
               key={item.id}
@@ -219,7 +262,7 @@ export default function Home() {
             </button>
           ))}
         </nav>
-        <span className="prototype-label">클릭형 프로토타입</span>
+        <span className="prototype-label">Docker 개발 환경</span>
       </header>
 
       <section className={screen === "security" ? "stage stage-wide" : "stage"}>
@@ -244,7 +287,8 @@ export default function Home() {
                   <button type="button" className="text-button" onClick={() => navigate("recovery")}>비밀번호를 잊으셨나요?</button>
                 </div>
                 {loginError && <p className="form-error" role="alert">{loginError}</p>}
-                <button className="primary-button" type="submit">로그인</button>
+                <button className="primary-button" type="submit" disabled={submitting}>{submitting ? "확인 중..." : "로그인"}</button>
+                <div className="demo-login-note"><strong>테스트 계정</strong><span>demo01@example.test ~ demo10@example.test</span><span>비밀번호는 서버의 DEMO_USER_PASSWORD 값입니다.</span></div>
                 <div className="divider"><span>또는</span></div>
                 <button className="secondary-button" type="button" onClick={() => setToast("소셜 로그인 연결 화면 예시입니다.")}><span className="button-icon">◇</span>소셜 계정으로 계속</button>
                 <button className="secondary-button" type="button" onClick={() => setToast("다른 계정 공급자 화면 예시입니다.")}><span className="button-icon">○</span>다른 계정으로 계속</button>
@@ -274,7 +318,7 @@ export default function Home() {
                 <label className="terms-label"><input type="checkbox" name="terms" /> <span><strong>이용약관 및 개인정보 처리방침</strong>에 동의합니다. <em>필수</em></span></label>
                 <label className="terms-label"><input type="checkbox" /> <span>새로운 소식과 혜택을 이메일로 받습니다. <i>선택</i></span></label>
                 {signupError && <p className="form-error" role="alert">{signupError}</p>}
-                <button className="primary-button" type="submit">계정 만들기</button>
+                <button className="primary-button" type="submit" disabled={submitting}>{submitting ? "생성 중..." : "계정 만들기"}</button>
               </form>
               <p className="switch-copy">이미 계정이 있으신가요? <button type="button" onClick={() => navigate("login")}>로그인</button></p>
             </section>
@@ -326,7 +370,7 @@ export default function Home() {
               <h1 id="recovery-title">{recoverySent ? <>이메일을<br />확인해 주세요</> : <>계정 복구를<br />시작할게요</>}</h1>
               <p>{recoverySent ? <>입력하신 이메일이 가입된 계정이라면<br />복구 링크를 보내드렸어요.</> : <>가입 시 사용한 이메일을 입력하면<br />계정 복구 방법을 안내해 드려요.</>}</p>
               {!recoverySent ? (
-                <form onSubmit={(event) => { event.preventDefault(); setRecoverySent(true); }}>
+                <form onSubmit={submitRecovery}>
                   <label className="field-label" htmlFor="recovery-email">이메일</label>
                   <input id="recovery-email" name="email" type="email" required placeholder="이메일 주소를 입력하세요" autoComplete="email" />
                   <button className="primary-button" type="submit">복구 링크 받기</button>
@@ -347,7 +391,7 @@ export default function Home() {
             <header className="security-header">
               <div>
                 <span className="eyebrow">ACCOUNT SECURITY</span>
-                <h1 id="security-title">보안 활동</h1>
+                <h1 id="security-title">{signedInName ? `${signedInName}님의 보안 활동` : "보안 활동"}</h1>
                 <p>로그인된 기기와 최근 계정 활동을 확인하고 관리하세요.</p>
               </div>
               <button className="outline-danger" type="button" onClick={() => setConfirmAll(true)}>다른 모든 기기에서 로그아웃</button>
@@ -388,7 +432,7 @@ export default function Home() {
         )}
       </section>
 
-      <footer className="footer"><span>로그인 시스템 화면 목업 v1</span><span>실제 개인정보를 입력하지 마세요.</span></footer>
+      <footer className="footer"><span>로그인 시스템 개발 환경 v1</span><span>가상 테스트 정보만 입력하세요.</span></footer>
 
       {toast && <div className="toast" role="status" aria-live="polite"><span>✓</span>{toast}</div>}
 

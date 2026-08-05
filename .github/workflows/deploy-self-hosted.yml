@@ -1,0 +1,122 @@
+name: Deploy login system
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: login-system-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Test frontend
+        run: npm ci && npm test && npm audit --omit=dev --audit-level=high
+      - name: Test backend
+        working-directory: backend
+        run: npm ci && npm test && npm audit --omit=dev --audit-level=high
+      - name: Validate Compose
+        env:
+          POSTGRES_ADMIN_PASSWORD: validation-only-admin-password
+          APP_DB_PASSWORD: validation-only-app-password
+          DEMO_USER_PASSWORD: validation-only-demo-password
+        run: docker compose config --quiet
+
+  deploy:
+    needs: verify
+    runs-on: [self-hosted, linux, x64, login-system]
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create protected runtime environment
+        shell: bash
+        env:
+          APP_BIND_ADDRESS: ${{ vars.APP_BIND_ADDRESS }}
+          APP_PORT: ${{ vars.APP_PORT }}
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          POSTGRES_ADMIN_USER: ${{ vars.POSTGRES_ADMIN_USER }}
+          POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
+          DEMO_USER_PASSWORD: ${{ secrets.DEMO_USER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          {
+            printf 'APP_BIND_ADDRESS=%s\n' "${APP_BIND_ADDRESS:-127.0.0.1}"
+            printf 'APP_PORT=%s\n' "${APP_PORT:-8080}"
+            printf 'PUBLIC_ORIGIN=%s\n' "${PUBLIC_ORIGIN:?PUBLIC_ORIGIN repository variable is required}"
+            printf 'COOKIE_SECURE=true\n'
+            printf 'POSTGRES_DB=%s\n' "${POSTGRES_DB:-login_system}"
+            printf 'POSTGRES_ADMIN_USER=%s\n' "${POSTGRES_ADMIN_USER:-login_admin}"
+            printf 'POSTGRES_ADMIN_PASSWORD=%s\n' "${POSTGRES_ADMIN_PASSWORD:?POSTGRES_ADMIN_PASSWORD secret is required}"
+            printf 'APP_DB_PASSWORD=%s\n' "${APP_DB_PASSWORD:?APP_DB_PASSWORD secret is required}"
+            printf 'SEED_DEMO_USERS=true\n'
+            printf 'DEMO_USER_PASSWORD=%s\n' "${DEMO_USER_PASSWORD:?DEMO_USER_PASSWORD secret is required}"
+            printf 'SESSION_TTL_SECONDS=28800\n'
+          } > .env
+
+      - name: Build and deploy commit
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          for service in frontend backend gateway; do
+            if docker image inspect "login-system-${service}:current" >/dev/null 2>&1; then
+              docker image tag "login-system-${service}:current" "login-system-${service}:previous"
+            fi
+          done
+          export IMAGE_TAG="${GITHUB_SHA}"
+          docker compose --env-file .env build --pull
+          docker compose --env-file .env up -d --remove-orphans
+
+      - name: Verify production health
+        id: health
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_port="${{ vars.APP_PORT }}"
+          app_port="${app_port:-8080}"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error "http://127.0.0.1:${app_port}/api/health/ready" >/dev/null; then
+              for service in frontend backend gateway; do
+                docker image tag "login-system-${service}:${GITHUB_SHA}" "login-system-${service}:current"
+              done
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose --env-file .env ps
+          docker compose --env-file .env logs --tail=100 backend frontend gateway
+          exit 1
+
+      - name: Roll back application images on failure
+        if: failure()
+        shell: bash
+        run: |
+          set -u
+          if docker image inspect login-system-frontend:previous >/dev/null 2>&1 && \
+             docker image inspect login-system-backend:previous >/dev/null 2>&1 && \
+             docker image inspect login-system-gateway:previous >/dev/null 2>&1; then
+            export IMAGE_TAG="previous"
+            docker compose --env-file .env up -d --no-build frontend backend gateway
+          else
+            echo "No previous application image tag is available; automatic rollback was skipped."
+          fi
+
+      - name: Remove unused images
+        if: success()
+        run: docker image prune -f --filter "until=168h"

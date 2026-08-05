@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+.vinext
+.wrangler
+dist
+outputs
+work
+.env*
+backend
+infra
+docs
+npm-debug.log

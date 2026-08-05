@@ -14,7 +14,7 @@ Copy-Item .env.example .env
 docker compose config
 docker compose up -d --build
 docker compose ps
-Invoke-RestMethod http://127.0.0.1:8080/api/health/ready
+Invoke-RestMethod http://127.0.0.1:7070/api/health/ready
 ```
 
 `.env`의 placeholder 비밀번호를 서로 다른 긴 값으로 변경하세요. 테스트 회원은 `demo01@example.test`부터 `demo10@example.test`까지이며 공통 비밀번호는 `DEMO_USER_PASSWORD` 값입니다. 이메일과 이름은 모두 가상 데이터입니다.

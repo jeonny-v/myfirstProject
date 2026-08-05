@@ -20,7 +20,7 @@ Copy-Item .env.example .env
 docker compose config
 docker compose up -d --build
 docker compose ps
-Invoke-RestMethod http://127.0.0.1:8080/api/health/ready
+Invoke-RestMethod http://127.0.0.1:7070/api/health/ready
 ```
 
 `.env`의 모든 placeholder를 서로 다른 긴 비밀번호로 변경하고 Git에 commit하지 마세요.

@@ -7,7 +7,7 @@ services:
       context: ./infra/nginx
     restart: unless-stopped
     ports:
-      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8080}:8080"
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-7070}:8080"
     depends_on:
       frontend:
         condition: service_healthy
@@ -50,7 +50,7 @@ services:
       DATABASE_URL: "postgresql://login_app:${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}@db:5432/${POSTGRES_DB:-login_system}"
       DB_POOL_MAX: "10"
       DB_SSL: "false"
-      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-http://localhost:8080}"
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-http://localhost:7070}"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
       SESSION_TTL_SECONDS: "${SESSION_TTL_SECONDS:-28800}"
       SEED_DEMO_USERS: "${SEED_DEMO_USERS:-true}"
